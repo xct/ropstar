@@ -40,7 +40,7 @@ class Ropstar():
 		context.timeout = 10	
 		self.t = Timeout()
 		self.bname = self.args.bin
-		self.binary = ELF("./"+self.bname )
+		self.binary = ELF(self.bname )
 		self.arch = self.binary.get_machine_arch()
 		log.info("Arch: "+self.arch)
 		if self.arch  == 'i386':
@@ -74,7 +74,7 @@ class Ropstar():
 		else:
 			log.info("Using local target")	
 			# env={'LD_PRELOAD': os.path.join(os.getcwd(), 'libc.so.6')}
-			p = process("./"+self.bname)
+			p = process(self.bname)
 		return p
 
 
@@ -135,7 +135,7 @@ class Ropstar():
 		''' get offset with unique pattern
 		'''
 		for enc in self.encodings:
-			p = process("./"+self.bname)
+			p = process(self.bname)
 			pattern = cyclic(self.pattern_length)
 			pattern = enc(pattern)
 			if self.args.magic:
