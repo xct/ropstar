@@ -26,14 +26,8 @@ python ../ropstar.py ropme -rhost docker.hackthebox.eu -rport 47184 -cid 8
 
 ## Limitations
 
-* A lot, this a just a PoC
-
-
-## Todo
-
-* canaries
-* pie
-* input from other sources than stdin (arg, file, network..)
+* a lot, this a just a PoC
+* we assume we can write enough bytes to put our payload after the return pointer overwrite - this is not always the case, so we fail on binaries like oldbridge (hackthebox)
 
 
 ## Tested on
@@ -49,3 +43,4 @@ python ../ropstar.py ropme -rhost docker.hackthebox.eu -rport 47184 -cid 8
 * speedrun-002 (defcon quals 2019, oooverflow.io)
 * ropeasy_updated (https://hackable.ca/)
 * buffer-overflow-1, buffer-overflow-2, gets (https://tcode2k16.github.io/blog/posts/picoctf-2018-writeup/binary-exploitation/#authenticate)
+* Ropemporium: ret2win32

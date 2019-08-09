@@ -72,6 +72,10 @@ class Ropstar():
 		self.success_marker = ''
 		# some config options		
 		self.pattern_length = 2000
+		self.magic_newline = False
+		if self.args.magic and "\\n" in self.args.magic:
+			self.args.magic = self.args.magic.replace("\\n","")
+			self.magic_newline = True
 
 
 
@@ -94,7 +98,10 @@ class Ropstar():
 		'''
 		result = ''
 		if self.args.magic:
-			payload = self.args.magic + payload
+			if not self.magic_newline:
+				payload = self.args.magic + payload
+			else:
+				p.sendline(self.args.magic)
 		if self.args.xor:
 			payload = xor(payload, self.xor)
 		if newline:
@@ -302,6 +309,11 @@ class Ropstar():
 			self.binary.address =  addr - entry_offset			
 			log.info("Base: "+hex(self.binary.address))
 
+		if self.args.win:
+			p = self.connect()	
+			if self.exploit.win(p, self.args.win):
+				p.close()
+			return
 		
 		# leakless works for static & non-static binaries
 		log.info("Checking for leakless exploitation")
