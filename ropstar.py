@@ -19,8 +19,7 @@ class Ropstar():
 		parser = argparse.ArgumentParser(description='Pwn things, fast.')
 		parser.add_argument('bin',help='target binary (local)')
 		parser.add_argument('-rhost',help='target host')
-		parser.add_argument('-rport', help='target port (required if -rhost is set)')
-		parser.add_argument('-cid', help='challenge id for hackthebox challenges (to auto submit flags)')
+		parser.add_argument('-rport', help='target port (required if -rhost is set)')		
 		parser.add_argument('-o', help='specify offset manually, skips dynamic resolution')
 		parser.add_argument('-p', help='use proxy, e.g. https://127.0.0.1:8080')
 		parser.add_argument('-m', help='specify address of main method, in case there is no symbols')
@@ -33,11 +32,7 @@ class Ropstar():
 		if self.home == 'root':
 			self.home = '/'+self.home
 		else:
-			self.home = '/home/'+self.home
-		if self.args.cid:
-			with open(self.home+'/.htb_apikey','r') as f:
-				self.api_key = f.read()
-				log.success("Read api_key: "+self.api_key[:6]+"...")				
+			self.home = '/home/'+self.home					
 		# set context
 		context.endian = "little"
 		context.os = "linux"
@@ -139,21 +134,6 @@ class Ropstar():
 		return result
 
 
-	def submit_challenge_flag(self, flag):
-		''' Submit flag to htb
-		'''
-		url = 'https://www.hackthebox.eu/api/challenges/own/?api_token='+self.api_key
-		data =  {'challenge_id':self.args.cid, 'flag': flag, "difficulty": 1}
-		data_str = "&".join("%s=%s" % (k,v) for k,v in data.items())
-		headers = {'User-Agent':'Mozilla/5.0 (X11; Linux x86_64; rv:60.0) Gecko/20100101 Firefox/60.0',
-					'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'}
-		if not self.args.p:
-			r = requests.post(url, data=data_str, headers=headers, verify=False)
-		else:
-			r = requests.post(url, data=data_str, headers=headers, verify=False, proxies={'https':self.args.p})
-		log.info("Result: "+str(r.status_code))
-
-	
 	def get_dynamic(self):
 		if not self.args.remote_offset:
 			return self.get_offset_local()
@@ -218,7 +198,7 @@ class Ropstar():
 
 
 	def check_success(self, p):
-		''' Check if we can execute shell commands and submit the flag when doing htb challenges
+		''' Check if we can execute shell commands
 		'''
 		try:
 			p.sendline("id")
@@ -227,11 +207,6 @@ class Ropstar():
 			if len(out) > 0:
 				p.sendline("cat flag.txt")
 				flag = p.recvline()
-				if self.args.cid and len(flag) > 0 and flag.find('No such file or directory') == -1:
-					self.submit_challenge_flag(flag.strip("\n"))
-					log.success("Submitted flag: "+flag)			
-				else:
-					log.info("Not submitted")
 				log.info('Time spent: '+str(round((time.time() - self.start_time),2))+'s')	
 				p.interactive()
 				return True
