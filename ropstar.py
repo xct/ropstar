@@ -184,7 +184,11 @@ class Ropstar():
 			pattern = enc(pattern)
 			if self.args.magic:
 				p.sendline(self.args.magic)			
-			p.sendline(pattern)
+			try:			
+				p.sendline(pattern)
+			except EOFError:
+				log.failure("Can not get offset")
+				return False
 			p.wait()
 			p.close()
 			core = Coredump('./core')
@@ -250,19 +254,20 @@ class Ropstar():
 			log.info("Getting offset")
 			result = self.get_dynamic()
 			if not result:
+				log.info("Trying format string vector")
 				# no offset found via simple overflow, maybe fmt string?
 				offset = -1
 				try:
 					autofmt = FmtStr(self.trigger_fmt)
 					if autofmt.offset == -1:
-						log.failure("Could not find format string vuln")
+						log.failure("Could not find format string vector")
 						return
 					p = self.connect()					
 					self.exploit.fmt(p, autofmt)
 					p.close()							
 					return
-				except IndexError:
-					log.failure("Could not find format string vuln")
+				except (IndexError, EOFError):
+					log.failure("Probably not vulnerable to format string vector")
 					return
 		else:
 			self.offset = int(self.args.o)
