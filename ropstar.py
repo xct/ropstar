@@ -27,7 +27,7 @@ class Ropstar():
 		parser.add_argument('-m', help='specify address of main method, in case there is no symbols')
 		parser.add_argument('-xor', help='xor payload with given byte')		
 		parser.add_argument('-win', help='specify win function address to call')	
-		parser.add_argument('-magic', help='magic string that needs to be send before the payload')
+		parser.add_argument('-magic', help='magic string that needs to be sent before the payload')
 		parser.add_argument('-remote_offset', help='get offset remotely via observing responses (often required with canaries)', action='store_true')
 		parser.add_argument('-plugins', help='run custom plugins')																											
 		self.args = parser.parse_args()
