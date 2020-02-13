@@ -6,6 +6,7 @@ import os
 import re
 import argparse
 import inspect
+import pwd
 from leak import Leak
 from exploit import Exploit
 from utils import *
@@ -33,7 +34,7 @@ class Ropstar():
 		parser.add_argument('-plugins', help='run custom plugins')																											
 
 		self.args = parser.parse_args()
-		self.home = os.getlogin()
+		self.home = pwd.getpwuid(os.getuid())[0]
 		if self.home == 'root':
 			self.home = '/'+self.home
 		else:

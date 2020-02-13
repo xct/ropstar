@@ -7,6 +7,7 @@ Exploits *simple* linux bof challenges involving alsr, nx and to some extend for
 ## Install
 
 * The program expects a local installation of [libcdatabase](https://github.com/niklasb/libc-database) in /home/user/tools/libcdatabase. To run local exploits make sure you add your local libc to libcdatabase (32-bit & 64-bit versions). Also in \~/tools you need a clone of [ROPgadget](https://github.com/JonathanSalwan/ROPgadget.git) (used for static binary exploitation).
+* Python3 is required now
 
 ## Examples
 
@@ -17,15 +18,15 @@ Exploit local binary:
 python ../ropstar.py <name>
 ```
 
-Run remote challenge
+Run remote:
 ```bash
 python ../ropstar.py <name> -rhost <address> -rport <port>
 ```
 
 ## Limitations
 
-* a lot, this a just a PoC
-* we assume we can write enough bytes to put our payload after the return pointer overwrite - this is not always the case, so we fail on some binaries
+* a lot, this a just a PoC, expect it to crash on most targets
+* we assume we can write enough bytes to put our payload after the return pointer overwrite - when this is not then case ropstar fails
 
 ## Tested on
 
@@ -39,6 +40,4 @@ python ../ropstar.py <name> -rhost <address> -rport <port>
 * Ropemporium: ret2win32
 * various others
 
-## ToDo
-
-- save binary hash <-> exploit combinations
+Help on this project is welcome :)
