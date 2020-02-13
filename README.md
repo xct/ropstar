@@ -38,3 +38,7 @@ python ../ropstar.py <name> -rhost <address> -rport <port>
 * buffer-overflow-1, buffer-overflow-2, gets (https://tcode2k16.github.io/blog/posts/picoctf-2018-writeup/binary-exploitation/#authenticate)
 * Ropemporium: ret2win32
 * various others
+
+## ToDo
+
+- save binary hash <-> exploit combinations

