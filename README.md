@@ -40,4 +40,4 @@ python ../ropstar.py <name> -rhost <address> -rport <port>
 * Ropemporium: ret2win32
 * various others
 
-Help on this project is welcome :)
+Help on this project is welcome! Contact me on twitter: @xct_de.
