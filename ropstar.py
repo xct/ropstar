@@ -394,8 +394,10 @@ class Ropstar():
                     if len(leak) == 0:
                         continue
                     log.info("Using "+version)
+                    libc_path = f"{self.leak.libcdb_path}libs/{version}/libc.so.6"
+                    print(libc_path)
                     try:
-                        libc = ELF(version) # take first hit for now
+                        libc = ELF(libc_path)
                     except IOError:
                         log.failure("Could not load "+version+ "(skipping)")
                         continue

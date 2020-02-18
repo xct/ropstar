@@ -52,14 +52,6 @@ class Leak():
                 if m:
                     versions.append(m.groups(1)[0])
             log.info(versions)
-            # copy them to a local dir
-            for version in versions:
-                task = self.libcdb_path+"download "+version
-                p = subprocess.Popen(task, shell=True)
-                p.communicate()
-                task = "cp "+self.libcdb_path+"libs/"+version+"/libc.so.6 ./"+version
-                p = subprocess.Popen(task, shell=True)
-                p.communicate()
             return versions
 
 
