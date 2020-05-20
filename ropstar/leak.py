@@ -1,5 +1,5 @@
 from pwn import *
-from utils import *
+from .utils import *
 
 # Author: xct
 

