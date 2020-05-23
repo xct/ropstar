@@ -17,16 +17,14 @@ pip install -r requirements.txt
 
 ## Examples
 
-The examples assume you create a 'work' subdirectory in the project folder where you copy the target binary into and run the program from.
-
 Exploit local binary:
 ```bash
-python ../ropstar.py <name>
+python ropstar.py <name>
 ```
 
 Run remote:
 ```bash
-python ../ropstar.py <name> -rhost <address> -rport <port>
+python ropstar.py <name> -rhost <address> -rport <port>
 ```
 
 ## Limitations
