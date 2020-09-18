@@ -46,7 +46,7 @@ class Leak():
             out = p.communicate()[0]
             out = out.decode()
             versions = []
-            pattern = ".*id (.*)\)"
+            pattern = "\((.*)\)"
             for version in out.split('\n'):
                 m = re.search(pattern, version)
                 if m:
