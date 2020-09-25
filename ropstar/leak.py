@@ -11,15 +11,15 @@ class Leak():
         self.arch = self.ropstar.arch
         self.libcdb_path = self.ropstar.home+'/tools/libc-database/'
         self.leak_parse_amd64 = {
-          'puts': lambda line: line.strip()[:6]+ b'\x00\x00',
-          'printf': lambda line: line.strip()[:6]+ b'\x00\x00',
-          'system': lambda line: line.strip()[7:(7+6)].ljust(8, '\x00'),
+          'puts': lambda line: line.strip()[:6].ljust(8, b'\x00'),
+          'printf': lambda line: line.strip()[:6].ljust(8, b'\x00'),
+          'system': lambda line: line.strip()[7:(7+6)].ljust(8, b'\x00'),
           'write': lambda line: line,
         }
         self.leak_parse_i386 = {
           'puts': lambda line: line.strip()[:4],
           'printf': lambda line: line.strip()[:4],
-          'system': lambda line: line.strip()[7:(7+4)].ljust(4, '\x00'),
+          'system': lambda line: line.strip()[7:(7+4)].ljust(4, b'\x00'),
           'write': lambda line: line,
         }
         if self.ropstar.arch == 'amd64':

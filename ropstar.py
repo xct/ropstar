@@ -215,9 +215,8 @@ class Ropstar():
             except EOFError:
                 log.failure("Can not get offset")
                 return False
-            p.wait()
-            p.close()
-            core = Coredump('./core')
+            p.wait()            
+            core = p.corefile            
             log.info("Fault: "+hex(core.fault_addr))
             addr = core.fault_addr & 0x000000ffffffff # have to make it 32 bit or cyclic crashes
             self.offset = cyclic_find(addr)
@@ -227,6 +226,7 @@ class Ropstar():
             if self.offset != -1:
                 log.success("Offset: "+str(self.offset))
                 return True
+            p.close()
         log.failure("Can not get offset")
         return False
 
